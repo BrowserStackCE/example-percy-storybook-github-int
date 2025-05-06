@@ -1,0 +1,58 @@
+name: Percy Github Integration
+on:
+    push:
+        branches: [ "main" ]
+    pull_request:
+        branches: [ "main" ]
+    workflow_dispatch:
+        # Optional: You can define inputs here that the user can provide
+        # when triggering manually via the UI.
+        # inputs:
+        #   environment:
+        #     description: 'Environment to deploy to'
+        #     required: true
+        #     default: 'staging'
+        #   build_only:
+        #     description: 'Skip deployment steps?'
+        #     required: false
+        #     type: boolean
+        #     default: false  
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: v1/${{ runner.os }}/node-14/${{ hashFiles('**/package-lock.lock') }}
+          restore-keys: v1/${{ runner.os }}/node-14/
+      - name: Install dependencies
+        run: npm install
+      - name: Run tests
+        #run: npm test
+        run: |
+          BUILD_ID=$(npx percy storybook:start | grep https:\/\/percy.io\/.*\/builds | awk -F "/" '{print $NF}')
+          # Check if an ID was found and set the environment variable
+          if [ -n "$BUILD_ID" ]; then
+            echo "Successfully extracted Percy Build ID: $BUILD_ID"
+            # Set the environment variable PERCY_BUILD_ID for subsequent steps
+            echo "PERCY_BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+          else
+            echo "Error: Could not extract Percy Build ID from Percy command output."            
+          fi
+        env:
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+      - name: List files in current directory
+        run: ls -al    
+      - name: Make script executable
+        run: chmod +x ./waitForBuildT0End.sh
+
+      - name: Execute the script file
+        run: ./waitForBuildT0End.sh
+        env:
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }} 
+          PERCY_BUILD_ID: ${{ env.PERCY_BUILD_ID }}
